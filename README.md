@@ -1,15 +1,19 @@
-# Contribution [4098]: Add LinearSystemLoop.atReference() function
+# Contribution #4098: Add LinearSystemLoop.atReference() function
 
 **Contribution Number:** 4098  
 **Student:** Kashish Saini
 **Issue:** [GitHub issue link](https://github.com/wpilibsuite/allwpilib/issues/4098)
-**Status:** Phase I In Progress
+**Status:** Phase II In Completed
 
 ---
 
 ## Why I Chose This Issue
 
-[1-2 paragraphs explaining why this issue interests you, how it matches your skills/learning goals, what you hope to learn]
+I chose this issue because it's a small, well-bounded feature addition rather than an open-ended refactor — LinearSystemLoop exposes a getError() method but has no built-in way to check whether the system is "at reference," unlike other WPILib controllers. Before starting implementation, I verified the issue's own premise against the current codebase rather than taking it at face value: the issue states LinearSystemLoop "takes a vector of acceptable error values," implying a tolerance already exists — but as of current main, no such field exists anywhere in the class (Java, C++, or the Python binding config). So this isn't wiring together two existing pieces; it requires adding a new tolerance field and setter, then the comparison method, in three language surfaces.
+
+I also had to update my template list: the issue and prior research pointed to HolonomicDriveController.atReference() and RamseteController.atReference() as precedent, but both classes were removed in WPILib's 2027 refactor (called out explicitly in CONTRIBUTING.md as intentionally-removed "opaque black-box" abstractions). The patterns that do still exist and are usable as templates are PIDController.atSetpoint() (scalar tolerance, defaults to a nonzero value) and LTVUnicycleController.atReference()/setTolerance() (structured tolerance object, strict < comparison, per-axis check) — I'm using the latter as the primary template since its tolerance is a compound value like the one I need to add here.
+
+I ran this through the Phase I 6-check selection criteria and it passed 5.5/6 — the only partial gap being that the issue's linked Discord discussion isn't accessible to me, which I addressed by relying on in-repo precedent instead, and by treating the "per-element vs. combined-norm" tolerance question as an open design question to flag on the issue rather than assume.
 
 ---
 
@@ -17,19 +21,22 @@
 
 ### Problem Description
 
-[In your own words, what's broken or missing?]
+LinearSystemLoop (a WPILib class combining a controller, observer, and feedforward for full state-feedback control) exposes a .getError() method (the difference between the reference r and the observer's state estimate x-hat) but has no way to check whether that error is within an acceptable tolerance. Other WPILib controllers already have this exact convenience method (atSetpoint() on PIDController, atReference() on LTVUnicycleController and LTVDifferentialDriveController), so this is a consistency gap, not a new concept — but unlike those controllers, LinearSystemLoop currently has no tolerance concept at all to build on.
 
 ### Expected Behavior
 
-[What should happen?]
+Calling a new atReference() method on LinearSystemLoop should return true if the system's current error (from getError()) is within a configured tolerance for every state, and false otherwise — mirroring LTVUnicycleController.atReference()'s per-element, strict-less-than comparison.
 
 ### Current Behavior
 
-[What actually happens?]
+No tolerance field and no atReference() method exist on LinearSystemLoop, in the Java implementation (org.wpilib.math.system.LinearSystemLoop), the C++ implementation (wpi::math::LinearSystemLoop), or the Python (RobotPy) semiwrap binding config. A caller who wants this behavior currently has to manually call getError() and compare it against tolerances they track themselves.
 
 ### Affected Components
 
-[Which parts of the codebase are involved?]
+- wpimath/src/main/java/org/wpilib/math/system/LinearSystemLoop.java (Java)
+- wpimath/src/main/native/include/wpi/math/system/LinearSystemLoop.hpp (C++, header-only)
+- wpimath/src/main/python/semiwrap/LinearSystemLoop.yml (Python/RobotPy binding config — not mentioned in the original issue, but required per CONTRIBUTING.md's rule that new user-facing methods need wrapper configs updated)
+- wpimath/src/test/java/org/wpilib/math/controller/LinearSystemLoopTest.java and its C++ equivalent
 
 ---
 
@@ -37,19 +44,18 @@
 
 ### Environment Setup
 
-[Notes on setting up your local development environment - challenges you faced, how you solved them]
+Repo builds via Gradle; no devcontainer present. Cloned fork already had a working main; found local main was 43 commits behind upstream/main (added upstream remote pointing at wpilibsuite/allwpilib, fast-forwarded, pushed the sync to my fork) before branching, to avoid basing work on stale code.
 
 ### Steps to Reproduce
 
-1. [Step 1]
-2. [Step 2]
-3. [Observed result]
+1. Read wpimath/src/main/java/org/wpilib/math/system/LinearSystemLoop.java and wpimath/src/main/native/include/wpi/math/system/LinearSystemLoop.hpp directly.
+2. Confirmed getError()/Error() exist (return reference r - observer x-hat), but grepped both files for atReference/tolerance/Tolerance — zero matches in either language.
+3. Also checked wpimath/src/main/python/semiwrap/LinearSystemLoop.yml (RobotPy binding config) — no tolerance/atReference entries either, confirming this is a three-language gap (Java, C++, Python), not two as the issue implies.
 
 ### Reproduction Evidence
 
-- **Commit showing reproduction:** [Link to commit in your fork]
-- **Screenshots/logs:** [If applicable]
-- **My findings:** [What you discovered during reproduction]
+- My findings: The issue's premise that LinearSystemLoop "already stores a tolerance vector" is inaccurate as of the current main — there is no tolerance field at all. The class only exposes getError(). So the fix isn't just "combine two existing things" — it requires adding a new tolerance field and setter, then a comparison method, in Java, C++, and the Python wrapper config.
+- Branch: fix-issue-4098 (based on upstream/main @ bf5f00490).
 
 ---
 
@@ -57,11 +63,11 @@
 
 ### Analysis
 
-[Your analysis of the root cause - what's causing the issue?]
+Two live precedents exist for this exact pattern: PIDController.atSetpoint() (single scalar, default nonzero tolerance) and LTVUnicycleController.atReference()/setTolerance() (structured tolerance object, uninitialized-by-default field, strict < comparison). The two "template" classes cited in the original issue — HolonomicDriveController and RamseteController — were both removed from the codebase in the 2027 refactor, so they're not available as references.
 
 ### Proposed Solution
 
-[High-level description of your fix approach]
+Add a Matrix<States, N1> m_tolerance field (Java) / StateVector m_tolerance field (C++) to LinearSystemLoop, defaulted to a zero vector (unlike LTVUnicycleController's uninitialized field, to avoid a null/undefined-behavior footgun on a generic-typed vector). Add setTolerance(...) and atReference()/AtReference() that checks, per-element, abs(getError(i)) < tolerance.get(i) — strict less-than, matching LTVUnicycleController's convention. Mirror the change into the LinearSystemLoop.yml semiwrap config so the Python (RobotPy) binding picks it up.
 
 ### Implementation Plan
 
