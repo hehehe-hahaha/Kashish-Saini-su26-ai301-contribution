@@ -3,7 +3,7 @@
 **Contribution Number:** 4098  
 **Student:** Kashish Saini
 **Issue:** [GitHub issue link](https://github.com/wpilibsuite/allwpilib/issues/4098)
-**Status:** Phase II In Completed
+**Status:** Phase III Completed
 
 ---
 
@@ -73,20 +73,23 @@ Add a Matrix<States, N1> m_tolerance field (Java) / StateVector m_tolerance fiel
 
 Using UMPIRE framework (adapted):
 
-**Understand:** [Restate the problem]
+**Understand:** `LinearSystemLoop` has error data (`getError()`) but no tolerance field and no combined boolean check for "is the system at reference."
 
-**Match:** [What similar patterns/solutions exist in the codebase?]
+**Match:** `PIDController.atSetpoint()` (single-value tolerance check) and `LTVUnicycleController.atReference()`/`setTolerance()` (multi-dimensional, same naming pattern) are the closest existing patterns — used the latter as the direct template since `RamseteController`/`HolonomicDriveController` (originally planned as templates) have been removed from this codebase.
 
-**Plan:** [Step-by-step implementation plan]
-1. [Modify file X to do Y]
-2. [Add function Z]
-3. [Update tests]
+**Plan:** 
+1. Add a `m_tolerance` field plus `atReference()`/`setTolerance()` to `LinearSystemLoop.java` — elementwise compare `getError()` against the tolerance vector.
+2. Add the equivalent field and methods to `LinearSystemLoop.hpp`.
+3. Add Javadoc/Doxygen comments consistent with sibling methods.
+4. Wire up the RobotPy semiwrap binding (`LinearSystemLoop.yml`) for parity, per CONTRIBUTING.md.
+5. Add unit tests in both languages covering: within tolerance, outside tolerance, and boundary-value cases.
 
-**Implement:** [Link to your branch/commits as you work]
+**Implement:** Branch `fix-issue-4098`, commit [`2c7c3bb78`](https://github.com/hehehe-hahaha/allwpilib/commit/2c7c3bb783b2a28f919b4a229ba7ca91a18fc638) — "Add atReference() to LinearSystemLoop (Java, C++)"
 
-**Review:** [Self-review checklist - does it follow the project's contribution guidelines?]
 
-**Evaluate:** [How will you verify it works?]
+**Review:** Checked `CONTRIBUTING.md` for code style, commit conventions, and the Python parity requirement before implementing.
+
+**Evaluate:** Tests confirm correct `true`/`false` results at, above, and below tolerance thresholds (boundary is inclusive, `<=`), matching sibling `atReference()` behavior.
 
 ---
 
@@ -94,36 +97,41 @@ Using UMPIRE framework (adapted):
 
 ### Unit Tests
 
-- [ ] Test case 1: [Description]
-- [ ] Test case 2: [Description]
-- [ ] Test case 3: [Description]
+- [x] Test case 1: All error elements within tolerance → `atReference()` returns `true`
+- [x] Test case 2: One error element outside tolerance → `atReference()` returns `false`
+- [x] Test case 3: Error exactly at tolerance boundary → confirmed inclusive (`<=`) behavior, matches sibling methods
 
 ### Integration Tests
 
-- [ ] Integration scenario 1
-- [ ] Integration scenario 2
+- [ ] Integration scenario 1: N/A — change is additive and self-contained, no cross-component integration surface beyond the existing `LinearSystemLoop` test suite.
+- [ ] Integration scenario 2: N/A
 
 ### Manual Testing
 
-[What you tested manually and results]
+Not yet run locally — my current environment has no JDK or C++ toolchain (no vendored Eigen), so `./gradlew test` could not be executed here. **Still need to run the full build/test suite on a real dev machine before opening the PR.**
 
 ---
 
 ## Implementation Notes
 
-### Week [X] Progress
+### Week 1 Progress
 
-[What you built this week, challenges faced, decisions made]
-
-### Week [Y] Progress
-
-[Continue documenting as you work]
+Implemented `atReference()`/`setTolerance()` in both Java and C++, wired up the RobotPy semiwrap binding, and added unit tests in both languages. Landed as a single commit since the whole change is small and each piece (Java, C++, bindings, tests) depends on the same design decision.
 
 ### Code Changes
 
-- **Files modified:** [List]
-- **Key commits:** [Links to important commits]
-- **Approach decisions:** [Why you chose certain approaches]
+- **Files modified:** 
+  - `wpimath/src/main/java/org/wpilib/math/system/LinearSystemLoop.java`
+  - `wpimath/src/main/native/include/wpi/math/system/LinearSystemLoop.hpp`
+  - `wpimath/src/main/python/semiwrap/LinearSystemLoop.yml`
+  - `wpimath/src/test/java/org/wpilib/math/controller/LinearSystemLoopTest.java`
+  - `wpimath/src/test/native/cpp/controller/LinearSystemLoopTest.cpp`
+- **Key commits:** [`2c7c3bb78`](https://github.com/hehehe-hahaha/allwpilib/commit/2c7c3bb783b2a28f919b4a229ba7ca91a18fc638) — "Add atReference() to LinearSystemLoop (Java, C++)"
+- **Approach decisions:**
+  - Default tolerance is zero (set separately via `setTolerance()`), matching `LTVUnicycleController`'s pattern rather than a constructor argument.
+  - Boundary is inclusive (`<=`), consistent with sibling `atReference()` implementations.
+  - Added `<cmath>` include in the C++ header for `std::abs`.
+  - Added the semiwrap `.yml` entry because CONTRIBUTING.md requires Python/RobotPy parity for new public methods.
 
 ---
 
